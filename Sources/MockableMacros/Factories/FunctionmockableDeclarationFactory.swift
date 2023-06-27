@@ -29,7 +29,9 @@ struct FunctionmockableDeclarationFactory {
     func mockImplementations(for functions: [FunctionDeclSyntax]) -> MemberDeclListSyntax {
         for function in functions {
             let paramsValues = function.signature.input.parameterList
-                .map { $0.firstName.text }
+                .map {
+                    $0.secondName?.text != nil ? $0.secondName!.text : $0.firstName.text
+                }
             FunctionDeclSyntax(
                 attributes: function.attributes,
                 modifiers: function.modifiers,
