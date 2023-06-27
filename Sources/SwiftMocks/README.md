@@ -23,9 +23,9 @@ class MyObject {
     func doSomething() {
         mock.doSomething()
     }
-    let mock = MyObjectSwiftMocks() // generated
-    class MyObjectSwiftMocks { // generated
-        var doSomethingCalls: SwiftMocks<Void, Void> = .init() // generated
+    let mock = MyObjectMock() // generated
+    class MyObjectMock { // generated
+        var doSomethingCalls: Mock<Void, Void> = .init() // generated
         func doSomething() { // generated
             doSomethingCalls.record(()) // generated
         } // generated

@@ -1,10 +1,21 @@
-public struct SwiftMocks<ArgumentType, ReturnType> {
+/// Mock is a lightweight mocking framework for Swift.
+/// It allows to mock calls to functions and methods, and inspect the calls made to them.
+///
+/// For example:
+///
+///     class MyClass {
+///         let mock = Mock<(Int, String), String>()
+///         func doAction(number: Int, text: String) -> String {
+///             return mock.record((number, text))
+///         }
+///     }
+///
+public struct Mock<ArgumentType, ReturnType> {
     public typealias CallType = ((ArgumentType) -> ReturnType)
     
-    /// Mock block to handle call, and return value. To injected by Tests.
     private var callMock: CallType
     
-    
+    /// Creates a mock that will fail if called without being mocked.
     public init(
         file: StaticString = #filePath,
         line: UInt = #line
@@ -14,70 +25,133 @@ public struct SwiftMocks<ArgumentType, ReturnType> {
         }
     }
     
-    /// Initialise SwiftMocks with default return value
-    /// - Parameter defaultReturnValue: Value to be reutnred automativally by default when record trigered
+    /// Creates a mock that will return the given default value if
+    /// called without being mocked.
+    /// - Parameter defaultReturnValue: The value to return when called without being mocked.
+    ///
+    /// - Note: Useful for mocking functions that return a value and don't have side effects.
     public init(defaultReturnValue: ReturnType) {
         callMock = { _ in defaultReturnValue }
     }
 
-    /// Initialise SwiftMocks with mock function
-    /// - Parameter mock: escaping mock function to be executed when record tiggered
+    /// Creates a mock that will behave as the given mocked function.
+    /// - Parameter mock: The function to be executed when the mock is called.
+    ///
+    /// - Note: Useful for mocking functions that have side effects
+    ///         and you want to test the side effects.
     public init(mock: @escaping CallType) {
         self.callMock = mock
     }
     
-    /// Arguments from last call
+    /// Returns the arguments of the last call made to the mock or `nil` if no calls were made.
     public var latestCall: ArgumentType? {
         callsHistory.last
     }
 
-    /// Number of times records called
+    /// Returns the number of calls made to the mock.
     public var callsCount: Int {
         callsHistory.count
     }
     
-    /// Update closure to be called when record is tiggered
-    /// - Parameter mock: function to be called when `record` tiggered. To be injected by test to validate parameters, override result, trigger expectations etc.
+    /// Injects a mock to be executed when the mock is called.
+    ///
+    /// For example:
+    ///
+    ///     let mock = Mock<(Int, String), String>()
+    ///     mock.mockCall { (number, text) in "\(number) \(text)" }
+    ///     mock.record((1, "2")) // returns "1 2"
+    ///
+    /// - Parameter mock: The function to be executed when the mock is called.
     public mutating func mockCall(_ mock: @escaping CallType) {
         callMock = mock
     }
 
-    /// Keeps track of all the calls that the mock had
+    /// Returns the list of arguments of all the calls made to the mock.
+    /// For example
+    ///
+    ///     let mock = Mock<(Int, String), String>()
+    ///     mock.record((1, "2"))
+    ///     mock.record((3, "4"))
+    ///     mock.callsHistory // returns [(1, "2"), (3, "4")]
+    ///
+    /// - Note: The order of the arguments is the same as the order of the calls.
     public private(set) var callsHistory: [ArgumentType] = []
     
-    /// Record call
-    /// - Parameter arguments: tuple with arguments to be recorded
+    /// Records a call to the mock and returns the result of the mock.
+    /// - Parameter arguments: The arguments of the call.
+    /// - Returns: The result of the mock.
+    ///
+    /// For example:
+    ///
+    ///     let mock = Mock<(Int, String), String>()
+    ///     mock.record((1, "2")) // returns the result of the mock
+    ///
+    /// Further example:
+    ///
+    ///     class MyClass {
+    ///         let mock = Mock<(Int, String), String>()
+    ///         func doAction(number: Int, text: String) -> String {
+    ///             return mock.record((number, text))
+    ///         }
+    ///     }
+    ///     let myClass = MyClass()
+    ///     myClass.mock.mockCall { (number, text) in "\(number) \(text)" }
+    ///     myClass.doAction(number: 1, text: "2") // returns "1 2", as the mock was injected
+    ///     myClass.mock.callsHistory // returns [(1, "2")]
+    ///
     public mutating func record(_ arguments: ArgumentType) -> ReturnType {
         callsHistory.append(arguments)
         return callMock(arguments)
     }
 }
 
-/// Convinience extension to enable parameterless initialiser for no return expected
-public extension SwiftMocks where ReturnType == Void {
+public extension Mock where ReturnType == Void {
+    /// Convenience initializer for mocks that return `Void`.
+    /// - Note: The mock will fail if called without being mocked.
+    ///       Call `mockCall(_:)` to inject a mock.
+    /// - SeeAlso: `init(file:line:)`
     init() {
         self.init { _ in }
     }
 }
 
-/// Convinience extension to record Void argument
-public extension SwiftMocks where ArgumentType == Void {
-    /// Update closure to be called when record is tiggered
-    /// - Parameter mock: function to be called when `record` tiggered. To be injected by test to validate parameters, override result, trigger expectations etc.
+public extension Mock where ArgumentType == Void {
+    /// Convenience method for mocking functions that don't take arguments.
+    /// - Parameter mock: The function to be executed when the mock is called.
+    /// - SeeAlso: `mockCall(_:)`
+    /// - Note: Same as calling `mockCall { _ in mock() }` but more readable.
     mutating func mockCall(_ mock: @escaping () -> ReturnType) {
         callMock = { _ in mock() }
     }
     
+    /// Convenience method for recording calls to functions that don't take arguments.
+    /// - Returns: The result of the mock.
+    /// - SeeAlso: `record(_:)`
+    /// - Note: Same as calling `record(())` but more readable.
     mutating func record() -> ReturnType {
         self.record(())
     }
 }
 
-/// Simple struct to define SwiftMockss for Variables
-public struct SwiftMocksVariable<VarType> {
-    public var setter: SwiftMocks<VarType, Void>
-    public var getter: SwiftMocks<Void, VarType>
+/// A mock better suited for mocking properties.
+///
+/// For example:
+///
+/// 	class MyClass {
+/// 	    let mock = MockVariable<String>()
+/// 	    var myProperty: String {
+/// 	        get { return mock.getter.record() }
+/// 	        set { mock.setter.record(newValue) }
+/// 	    }
+/// 	}
+///
+public struct MockVariable<VarType> {
+    public var setter: Mock<VarType, Void>
+    public var getter: Mock<Void, VarType>
 
+    /// Creates a mock that will fail if called without being mocked.
+    /// - Note: You can inject mocks by calling `mockCall(_:)` on `setter` or `getter`.
+    ///       i.e. `mock.getter.mockCall { "Hello" }`
     public init() {
         self.setter = .init()
         self.getter = .init()

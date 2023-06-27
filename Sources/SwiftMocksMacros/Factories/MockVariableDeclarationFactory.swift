@@ -17,7 +17,7 @@ struct MockVariableDeclarationFactory {
                 bindingsBuilder: {
                     PatternBindingSyntax(
                         pattern: binding.pattern,
-                        typeAnnotation: TypeAnnotationSyntax(type: TypeSyntax(stringLiteral: "SwiftMocksVariable<\(type)>")),
+                        typeAnnotation: TypeAnnotationSyntax(type: TypeSyntax(stringLiteral: "MockVariable<\(type)>")),
                         initializer: InitializerClauseSyntax(value: ExprSyntax(stringLiteral: ".init()"))
                     )
                 }

@@ -8,7 +8,7 @@ let testMacros: [String: Macro.Type] = [
     "Mock": SwiftMocksMacro.self,
 ]
 
-final class SwiftMocksTests: XCTestCase {
+final class MockTests: XCTestCase {
     func testMacro() {
         assertMacroExpansion(
             """
@@ -21,9 +21,9 @@ final class SwiftMocksTests: XCTestCase {
             class MyClass {
                 func doAction() {
                 }
-                let mock = MyClassSwiftMocks()
-                class MyClassSwiftMocks {
-                     var doActionCalls: SwiftMocks < (Void), Void> = .init()
+                let mock = MyClassMock()
+                class MyClassMock {
+                     var doActionCalls: Mock < (Void), Void> = .init()
                         func doAction() {
                         doActionCalls.record(())
                     }
@@ -47,9 +47,9 @@ final class SwiftMocksTests: XCTestCase {
                 var priority: Int {
                     0
                 }
-                let mock = MyClassSwiftMocks()
-                class MyClassSwiftMocks {
-                    var priority: SwiftMocksVariable<Int > = .init()
+                let mock = MyClassMock()
+                class MyClassMock {
+                    var priority: MockVariable<Int > = .init()
                 }
             }
             """,

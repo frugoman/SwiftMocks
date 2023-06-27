@@ -16,12 +16,12 @@
 ///
 /// ```swift
 /// class MyClass {
-///     struct MyClassSwiftMocks {
-///         var priority: SwiftMocksVariable<Int> = .init()
-///         var doSomethingCalls: SwiftMocks<Void, Void> = .init()
-///         var performCalls: SwiftMocks<Int, String> = .init()
+///     struct MyClassMock {
+///         var priority: MockVariable<Int> = .init()
+///         var doSomethingCalls: Mock<Void, Void> = .init()
+///         var performCalls: Mock<Int, String> = .init()
 ///     }
-///     var mock: MyClassSwiftMocks = .init()
+///     var mock: MyClassMock = .init()
 /// }
 /// ```
 ///
