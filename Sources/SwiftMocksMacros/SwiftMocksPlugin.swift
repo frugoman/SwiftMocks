@@ -2,8 +2,8 @@ import SwiftCompilerPlugin
 import SwiftSyntaxMacros
 
 @main
-struct MockablePlugin: CompilerPlugin {
+struct SwiftMocksPlugin: CompilerPlugin {
     let providingMacros: [Macro.Type] = [
-        MockableMacro.self
+        SwiftMocksMacro.self
     ]
 }

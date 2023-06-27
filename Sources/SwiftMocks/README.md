@@ -1,8 +1,8 @@
-# Mockable
+# SwiftMocks
 
 A Swift library for easily mocking out objects.
 
-Using Swift Macros, Mockable allows you to easily create mock objects for testing. It's as simple as adding the `@Mock` attribute to your class, and then calling the generated `mock` property.
+Using Swift Macros, SwiftMocks allows you to easily create mock objects for testing. It's as simple as adding the `@Mock` attribute to your class, and then calling the generated `mock` property.
 
 The `mock` property keeps track of all calls to the object, and allows you to easily verify that the object was called with the correct parameters and to effortlessly stub out return values.
 
@@ -23,9 +23,9 @@ class MyObject {
     func doSomething() {
         mock.doSomething()
     }
-    let mock = MyObjectMockable() // generated
-    class MyObjectMockable { // generated
-        var doSomethingCalls: Mockable<Void, Void> = .init() // generated
+    let mock = MyObjectSwiftMocks() // generated
+    class MyObjectSwiftMocks { // generated
+        var doSomethingCalls: SwiftMocks<Void, Void> = .init() // generated
         func doSomething() { // generated
             doSomethingCalls.record(()) // generated
         } // generated

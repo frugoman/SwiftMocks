@@ -1,4 +1,4 @@
-public struct Mockable<ArgumentType, ReturnType> {
+public struct SwiftMocks<ArgumentType, ReturnType> {
     public typealias CallType = ((ArgumentType) -> ReturnType)
     
     /// Mock block to handle call, and return value. To injected by Tests.
@@ -14,13 +14,13 @@ public struct Mockable<ArgumentType, ReturnType> {
         }
     }
     
-    /// Initialise Mockable with default return value
+    /// Initialise SwiftMocks with default return value
     /// - Parameter defaultReturnValue: Value to be reutnred automativally by default when record trigered
     public init(defaultReturnValue: ReturnType) {
         callMock = { _ in defaultReturnValue }
     }
 
-    /// Initialise Mockable with mock function
+    /// Initialise SwiftMocks with mock function
     /// - Parameter mock: escaping mock function to be executed when record tiggered
     public init(mock: @escaping CallType) {
         self.callMock = mock
@@ -54,14 +54,14 @@ public struct Mockable<ArgumentType, ReturnType> {
 }
 
 /// Convinience extension to enable parameterless initialiser for no return expected
-public extension Mockable where ReturnType == Void {
+public extension SwiftMocks where ReturnType == Void {
     init() {
         self.init { _ in }
     }
 }
 
 /// Convinience extension to record Void argument
-public extension Mockable where ArgumentType == Void {
+public extension SwiftMocks where ArgumentType == Void {
     /// Update closure to be called when record is tiggered
     /// - Parameter mock: function to be called when `record` tiggered. To be injected by test to validate parameters, override result, trigger expectations etc.
     mutating func mockCall(_ mock: @escaping () -> ReturnType) {
@@ -73,10 +73,10 @@ public extension Mockable where ArgumentType == Void {
     }
 }
 
-/// Simple struct to define Mockables for Variables
-public struct MockableVariable<VarType> {
-    public var setter: Mockable<VarType, Void>
-    public var getter: Mockable<Void, VarType>
+/// Simple struct to define SwiftMockss for Variables
+public struct SwiftMocksVariable<VarType> {
+    public var setter: SwiftMocks<VarType, Void>
+    public var getter: SwiftMocks<Void, VarType>
 
     public init() {
         self.setter = .init()

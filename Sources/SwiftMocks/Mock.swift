@@ -16,12 +16,12 @@
 ///
 /// ```swift
 /// class MyClass {
-///     struct MyClassMockable {
-///         var priority: MockableVariable<Int> = .init()
-///         var doSomethingCalls: Mockable<Void, Void> = .init()
-///         var performCalls: Mockable<Int, String> = .init()
+///     struct MyClassSwiftMocks {
+///         var priority: SwiftMocksVariable<Int> = .init()
+///         var doSomethingCalls: SwiftMocks<Void, Void> = .init()
+///         var performCalls: SwiftMocks<Int, String> = .init()
 ///     }
-///     var mock: MyClassMockable = .init()
+///     var mock: MyClassSwiftMocks = .init()
 /// }
 /// ```
 ///
@@ -39,6 +39,6 @@
 ///
 @attached(member, names: arbitrary)
 public macro Mock() = #externalMacro(
-    module: "MockableMacros",
-    type: "MockableMacro"
+    module: "SwiftMocksMacros",
+    type: "SwiftMocksMacro"
 )

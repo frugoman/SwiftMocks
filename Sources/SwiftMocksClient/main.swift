@@ -1,4 +1,4 @@
-import Mockable
+import SwiftMocks
 
 @Mock class MyClass {
     var priority: Int { mock.priority.getter.record() }

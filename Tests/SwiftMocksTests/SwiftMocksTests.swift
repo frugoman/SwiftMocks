@@ -1,14 +1,14 @@
 import SwiftSyntaxMacros
 import SwiftSyntaxMacrosTestSupport
 import XCTest
-import MockableMacros
-import Mockable
+import SwiftMocksMacros
+import SwiftMocks
 
 let testMacros: [String: Macro.Type] = [
-    "Mock": MockableMacro.self,
+    "Mock": SwiftMocksMacro.self,
 ]
 
-final class MockableTests: XCTestCase {
+final class SwiftMocksTests: XCTestCase {
     func testMacro() {
         assertMacroExpansion(
             """
@@ -21,9 +21,9 @@ final class MockableTests: XCTestCase {
             class MyClass {
                 func doAction() {
                 }
-                let mock = MyClassMockable()
-                class MyClassMockable {
-                     var doActionCalls: Mockable < (Void), Void> = .init()
+                let mock = MyClassSwiftMocks()
+                class MyClassSwiftMocks {
+                     var doActionCalls: SwiftMocks < (Void), Void> = .init()
                         func doAction() {
                         doActionCalls.record(())
                     }
@@ -47,9 +47,9 @@ final class MockableTests: XCTestCase {
                 var priority: Int {
                     0
                 }
-                let mock = MyClassMockable()
-                class MyClassMockable {
-                    var priority: MockableVariable<Int > = .init()
+                let mock = MyClassSwiftMocks()
+                class MyClassSwiftMocks {
+                    var priority: SwiftMocksVariable<Int > = .init()
                 }
             }
             """,

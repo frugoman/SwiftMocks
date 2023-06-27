@@ -1,7 +1,7 @@
 import SwiftSyntax
 import SwiftSyntaxBuilder
 
-struct FunctionmockableDeclarationFactory {
+struct FunctionMockableDeclarationFactory {
     @MemberDeclListBuilder
     func callTrackerDeclarations(_ functions: [FunctionDeclSyntax]) -> MemberDeclListSyntax {
         for function in functions {
@@ -20,7 +20,7 @@ struct FunctionmockableDeclarationFactory {
             VariableDeclSyntax(
                 modifiers: ModifierListSyntax([.init(name: .identifier(""))]),
                 .var,
-                name: PatternSyntax(stringLiteral: function.identifier.text + "Calls: Mockable<(\(pa)), \(returnType)> = .init()")
+                name: PatternSyntax(stringLiteral: function.identifier.text + "Calls: SwiftMocks<(\(pa)), \(returnType)> = .init()")
             )
         }
     }
