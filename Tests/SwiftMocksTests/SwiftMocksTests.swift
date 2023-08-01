@@ -10,50 +10,48 @@ let testMacros: [String: Macro.Type] = [
 
 final class MockTests: XCTestCase {
     func testMacro() {
-        assertMacroExpansion(
-            """
-            @Mock
-            class MyClass {
-                func doAction() {}
+    let expectedSource = """
+        class MyClass {
+            func doAction() {
             }
-            """,
-            expandedSource: """
-            class MyClass {
+            let mock = MyClassMock()
+            class MyClassMock {
+                var doActionCalls: Mock<(Void), Void> = .init()
                 func doAction() {
-                }
-                let mock = MyClassMock()
-                class MyClassMock {
-                     var doActionCalls: Mock < (Void), Void> = .init()
-                        func doAction() {
-                        doActionCalls.record(())
-                    }
+                    doActionCalls.record(())
                 }
             }
-            """,
-            macros: testMacros
-        )
+        }
+        """
+        let inputSource = """
+        @Mock
+        class MyClass {
+            func doAction() {}
+        }
+        """
+        let actualSource = expandMacro(inputSource, macros: testMacros)
+        XCTAssertEqual(actualSource, expectedSource)
     }
     
     func testMacroWithVariables() {
-        assertMacroExpansion(
-            """
-            @Mock
-            class MyClass {
-                var priority: Int { 0 }
+        let expectedSource = """
+        class MyClass {
+            var priority: Int {
+                0
             }
-            """,
-            expandedSource: """
-            class MyClass {
-                var priority: Int {
-                    0
-                }
-                let mock = MyClassMock()
-                class MyClassMock {
-                    var priority: MockVariable<Int > = .init()
-                }
+            let mock = MyClassMock()
+            class MyClassMock {
+                var priority: MockVariable<Int> = .init()
             }
-            """,
-            macros: testMacros
-        )
+        }
+        """
+        let inputSource = """
+        @Mock
+        class MyClass {
+            var priority: Int { 0 }
+        }
+        """
+        let actualSource = expandMacro(inputSource, macros: testMacros)
+        XCTAssertEqual(actualSource, expectedSource)
     }
 }
