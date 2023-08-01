@@ -22,7 +22,7 @@ final class MockTests: XCTestCase {
                 func doAction() {
                 }
                 let mock = MyClassMock()
-                class MyClassMock  {
+                class MyClassMock {
                      var doActionCalls: Mock < (Void), Void> = .init()
                         func doAction() {
                         doActionCalls.record(())
@@ -48,7 +48,7 @@ final class MockTests: XCTestCase {
                     0
                 }
                 let mock = MyClassMock()
-                class MyClassMock  {
+                class MyClassMock {
                     var priority: MockVariable<Int > = .init()
                 }
             }
