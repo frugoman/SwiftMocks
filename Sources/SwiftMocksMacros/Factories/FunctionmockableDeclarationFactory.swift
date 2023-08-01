@@ -20,7 +20,7 @@ struct FunctionMockableDeclarationFactory {
             VariableDeclSyntax(
                 modifiers: ModifierListSyntax([.init(name: .identifier(""))]),
                 .var,
-                name: PatternSyntax(stringLiteral: function.identifier.text + "Calls: Mock<(\(pa)), \(returnType)> = .init()")
+                name: PatternSyntax(stringLiteral: function.identifier.text + "Calls = Mock<(\(pa)), \(returnType)>()")
             )
         }
     }

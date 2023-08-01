@@ -23,7 +23,7 @@ final class MockTests: XCTestCase {
                 }
                 let mock = MyClassMock()
                 class MyClassMock {
-                     var doActionCalls: Mock < (Void), Void> = .init()
+                     var doActionCalls = Mock < (Void), Void>()
                         func doAction() {
                         doActionCalls.record(())
                     }
