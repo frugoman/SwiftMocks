@@ -19,11 +19,12 @@ final class MockTests: XCTestCase {
             """,
             expandedSource: """
             class MyClass {
-                func doAction() {
-                }
+                func doAction() {}
+            
                 let mock = MyClassMock()
+            
                 class MyClassMock {
-                     var doActionCalls: Mock < (Void), Void> = .init()
+                     var doActionCalls = Mock<(Void), Void>()
                         func doAction() {
                         doActionCalls.record(())
                     }
@@ -44,10 +45,10 @@ final class MockTests: XCTestCase {
             """,
             expandedSource: """
             class MyClass {
-                var priority: Int {
-                    0
-                }
+                var priority: Int { 0 }
+            
                 let mock = MyClassMock()
+            
                 class MyClassMock {
                     var priority: MockVariable<Int > = .init()
                 }

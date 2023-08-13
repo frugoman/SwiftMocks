@@ -2,15 +2,15 @@ import SwiftSyntax
 import SwiftSyntaxBuilder
 
 struct FunctionMockableDeclarationFactory {
-    @MemberDeclListBuilder
-    func callTrackerDeclarations(_ functions: [FunctionDeclSyntax]) -> MemberDeclListSyntax {
+    @MemberBlockItemListBuilder
+    func callTrackerDeclarations(_ functions: [FunctionDeclSyntax]) -> MemberBlockItemListSyntax {
         for function in functions {
-            let params = function.signature.input.parameterList
+            let params = function.signature.parameterClause.parameters
                 .map { $0.type }
                 .map { type in
                     GenericParameterSyntax.init(name: TokenSyntax(stringLiteral: type.description))
                 }
-            let returnType = function.signature.output?.returnType.description ?? "Void"
+            let returnType = function.signature.returnClause?.type.description ?? "Void"
             
             let voidOne = GenericParameterSyntax.init(name: TokenSyntax(stringLiteral: "Void"))
             
@@ -18,17 +18,17 @@ struct FunctionMockableDeclarationFactory {
                 p.description
             }.joined(separator: ", ")
             VariableDeclSyntax(
-                modifiers: ModifierListSyntax([.init(name: .identifier(""))]),
+                modifiers: DeclModifierListSyntax([.init(name: .identifier(""))]),
                 .var,
-                name: PatternSyntax(stringLiteral: function.identifier.text + "Calls: Mock<(\(pa)), \(returnType)> = .init()")
+                name: PatternSyntax(stringLiteral: function.name.text + "Calls = Mock<(\(pa)), \(returnType)>()")
             )
         }
     }
     
-    @MemberDeclListBuilder
-    func mockImplementations(for functions: [FunctionDeclSyntax]) -> MemberDeclListSyntax {
+    @MemberBlockItemListBuilder
+    func mockImplementations(for functions: [FunctionDeclSyntax]) -> MemberBlockItemListSyntax {
         for function in functions {
-            let paramsValues = function.signature.input.parameterList
+            let paramsValues = function.signature.parameterClause.parameters
                 .map {
                     $0.secondName?.text != nil ? $0.secondName!.text : $0.firstName.text
                 }
@@ -36,11 +36,11 @@ struct FunctionMockableDeclarationFactory {
                 attributes: function.attributes,
                 modifiers: function.modifiers,
                 funcKeyword: function.funcKeyword,
-                identifier: function.identifier,
+                identifier: function.name,
                 genericParameterClause: function.genericParameterClause,
                 signature: function.signature,
                 genericWhereClause: function.genericWhereClause) {
-                    CodeBlockItemSyntax(stringLiteral: function.identifier.text + "Calls." + "record((\(paramsValues.joined(separator: ", "))))")
+                    CodeBlockItemSyntax(stringLiteral: function.name.text + "Calls." + "record((\(paramsValues.joined(separator: ", "))))")
                 }
         }
     }
