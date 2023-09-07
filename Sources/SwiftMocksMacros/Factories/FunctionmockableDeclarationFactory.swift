@@ -32,11 +32,13 @@ struct FunctionMockableDeclarationFactory {
                 .map {
                     $0.secondName?.text != nil ? $0.secondName!.text : $0.firstName.text
                 }
+            
+
             FunctionDeclSyntax(
                 attributes: function.attributes,
                 modifiers: function.modifiers,
                 funcKeyword: function.funcKeyword,
-                identifier: function.name,
+                name: function.name,
                 genericParameterClause: function.genericParameterClause,
                 signature: function.signature,
                 genericWhereClause: function.genericWhereClause) {
