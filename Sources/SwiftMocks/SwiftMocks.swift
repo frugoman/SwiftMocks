@@ -53,6 +53,10 @@ public struct Mock<ArgumentType, ReturnType> {
         callsHistory.count
     }
     
+    public var hasBeenCalled: Bool {
+        callsCount > 0
+    }
+    
     /// Injects a mock to be executed when the mock is called.
     ///
     /// For example:
