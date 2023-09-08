@@ -35,6 +35,32 @@ final class MockTests: XCTestCase {
         )
     }
     
+    func testMacroWithThrows() {
+        assertMacroExpansion(
+            """
+            @Mock
+            class MyClass {
+                func doAction() throws {}
+            }
+            """,
+            expandedSource: """
+            class MyClass {
+                func doAction() throws {}
+            
+                let mock = MyClassMock()
+            
+                class MyClassMock {
+                     var doActionCalls = ThrowingMock<(Void), Void>()
+                        func doAction() throws {
+                        try doActionCalls.record(())
+                    }
+                }
+            }
+            """,
+            macros: testMacros
+        )
+    }
+    
     func testMacroWithFunctionParameters() {
         assertMacroExpansion(
             """
