@@ -14,19 +14,97 @@ final class MockTests: XCTestCase {
             """
             @Mock
             class MyClass {
-                func doAction() {}
+                func doAction(number: Int) -> String {}
             }
             """,
             expandedSource: """
             class MyClass {
-                func doAction() {}
+                func doAction(number: Int) -> String {}
             
                 let mock = MyClassMock()
             
                 class MyClassMock {
-                     var doActionCalls = Mock<(Void), Void>()
-                        func doAction() {
-                        doActionCalls.record(())
+                     var doActionCalls = Mock<(Int), String >()
+                        func doAction(number: Int) -> String {
+                        doActionCalls.record((number))
+                    }
+                }
+            }
+            """,
+            macros: testMacros
+        )
+    }
+    
+    func testMacroThrowable() {
+        assertMacroExpansion(
+            """
+            @Mock
+            class MyClass {
+                func doAction() throws {}
+            }
+            """,
+            expandedSource: """
+            class MyClass {
+                func doAction() throws {}
+            
+                let mock = MyClassMock()
+            
+                class MyClassMock {
+                     var doActionCalls = MockThrowable<(Void), Void>()
+                        func doAction() throws {
+                        try doActionCalls.record(())
+                    }
+                }
+            }
+            """,
+            macros: testMacros
+        )
+    }
+    
+    func testMacroAsync() {
+        assertMacroExpansion(
+            """
+            @Mock
+            class MyClass {
+                func doAction() async {}
+            }
+            """,
+            expandedSource: """
+            class MyClass {
+                func doAction() async {}
+            
+                let mock = MyClassMock()
+            
+                class MyClassMock {
+                     var doActionCalls = MockAsync<(Void), Void>()
+                        func doAction() async {
+                        await doActionCalls.record(())
+                    }
+                }
+            }
+            """,
+            macros: testMacros
+        )
+    }
+    
+    func testMacroAsyncThrowable() {
+        assertMacroExpansion(
+            """
+            @Mock
+            class MyClass {
+                func doAction() async throws {}
+            }
+            """,
+            expandedSource: """
+            class MyClass {
+                func doAction() async throws {}
+            
+                let mock = MyClassMock()
+            
+                class MyClassMock {
+                     var doActionCalls = MockAsyncThrowable<(Void), Void>()
+                        func doAction() async throws {
+                        try await doActionCalls.record(())
                     }
                 }
             }

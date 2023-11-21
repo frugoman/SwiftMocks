@@ -3,7 +3,7 @@ import SwiftSyntax
 struct MockedClassDeclFactory {
     func make(typeName: TokenSyntax, from classDecl: ClassDeclSyntax) -> ClassDeclSyntax {
         ClassDeclSyntax(
-            identifier: typeName,
+            name: typeName,
             memberBlockBuilder: {
                 let variables = classDecl.memberBlock.members
                     .compactMap { $0.decl.as(VariableDeclSyntax.self) }
