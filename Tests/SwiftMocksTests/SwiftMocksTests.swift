@@ -170,21 +170,21 @@ final class MockDiagnosticsTests: XCTestCase {
         )
     }
 
-    func testInheritedRequirementsAreDiagnosed() {
+    func testMultipleInheritanceIsDiagnosed() {
         assertMacroExpansion(
             """
             @Mock
-            protocol Derived: Base {
+            protocol Combined: Base, Other {
                 func foo()
             }
             """,
             expandedSource: """
-            protocol Derived: Base {
+            protocol Combined: Base, Other {
                 func foo()
             }
             """,
             diagnostics: [
-                DiagnosticSpec(message: "'@Mock' does not yet support inherited protocol requirements (from 'Base'); flatten the requirements into the mocked protocol", line: 1, column: 1)
+                DiagnosticSpec(message: "'@Mock' supports inheriting from at most one other protocol (which must itself be '@Mock'); flatten the rest into the mocked protocol", line: 1, column: 1)
             ],
             macros: testMacros
         )
@@ -244,5 +244,42 @@ final class SendableInheritanceTests: XCTestCase {
         let worker = WorkerMock()
         worker.work()
         XCTAssertTrue(worker.verify.work.calledOnce)
+    }
+}
+
+// Protocol inheritance: DogMock subclasses AnimalMock, inheriting its members, trackers,
+// and stub/verify facades.
+@Mock
+protocol Animal {
+    func sound() -> String
+    var legs: Int { get }
+}
+
+@Mock
+protocol Dog: Animal {
+    func fetch() -> String
+}
+
+final class ProtocolInheritanceTests: XCTestCase {
+    func testInheritedAndOwnMembersBothWork() {
+        let dog = DogMock()
+        dog.stub.sound(returns: "woof")   // inherited member, stubbed via inherited facade
+        dog.stub.legs(returns: 4)         // inherited property
+        dog.stub.fetch(returns: "stick")  // own member
+
+        XCTAssertEqual(dog.sound(), "woof")
+        XCTAssertEqual(dog.legs, 4)
+        XCTAssertEqual(dog.fetch(), "stick")
+
+        XCTAssertTrue(dog.verify.sound.calledOnce)   // verify inherited member
+        XCTAssertTrue(dog.verify.fetch.calledOnce)   // verify own member
+    }
+
+    func testUsableThroughBaseProtocol() {
+        let dog = DogMock()
+        dog.stub.sound(returns: "bark")
+        let animal: Animal = dog          // satisfies the base protocol
+        XCTAssertEqual(animal.sound(), "bark")
+        XCTAssertTrue(dog.verify.sound.calledWith(.any))
     }
 }

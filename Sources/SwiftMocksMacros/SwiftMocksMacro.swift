@@ -47,24 +47,31 @@ public struct SwiftMocksMacro: PeerMacro {
         let propModels = properties.compactMap { PropertyModel($0) }
 
         let mockName = proto.name.text + "Mock"
-        let source = render(mockName: mockName, conformsTo: proto.name.text, functions: funcModels, properties: propModels)
+        // A single inherited protocol is mocked by subclassing its `<Base>Mock`.
+        let baseMock = realBases(of: proto).first.map { $0 + "Mock" }
+        let source = render(mockName: mockName, conformsTo: proto.name.text, baseMock: baseMock, functions: funcModels, properties: propModels)
         return [DeclSyntax(stringLiteral: source)]
     }
 }
 
 // MARK: - Validation
 
+/// Inherited protocols that carry requirements (i.e. excluding marker/constraint protocols
+/// that need no implementation). Each must itself be `@Mock`'d so its mock can be subclassed.
+private func realBases(of proto: ProtocolDeclSyntax) -> [String] {
+    let markers: Set<String> = ["AnyObject", "Sendable", "Any"]
+    return (proto.inheritanceClause?.inheritedTypes ?? [])
+        .map { $0.type.trimmedDescription }
+        .filter { !markers.contains($0) }
+}
+
 /// Returns a diagnostic for the first unsupported feature found in `proto`, or nil if the
 /// protocol is fully supported by the generator.
 private func unsupportedFeature(in proto: ProtocolDeclSyntax) -> MockDiagnostic? {
-    // Inherited protocol requirements aren't visible to a syntactic macro, so a mock can't
-    // implement them. Allow only constraints that carry no requirements.
-    let allowedInherited: Set<String> = ["AnyObject", "Sendable", "Any"]
-    for inherited in proto.inheritanceClause?.inheritedTypes ?? [] {
-        let name = inherited.type.trimmedDescription
-        if !allowedInherited.contains(name) {
-            return .inheritanceUnsupported(name)
-        }
+    // A single inherited protocol is supported by subclassing its mock (see `baseMock`).
+    // Classes are single-inheritance, so two or more real bases can't both be subclassed.
+    if realBases(of: proto).count > 1 {
+        return .multipleInheritanceUnsupported
     }
 
     func isStatic(_ modifiers: DeclModifierListSyntax) -> Bool {
@@ -145,11 +152,15 @@ private struct PropertyModel {
 
 // MARK: - Rendering
 
-private func render(mockName: String, conformsTo: String, functions: [FunctionModel], properties: [PropertyModel]) -> String {
+private func render(mockName: String, conformsTo: String, baseMock: String?, functions: [FunctionModel], properties: [PropertyModel]) -> String {
     var trackers: [String] = []
     var conformance: [String] = []
     var stub: [String] = []
     var verify: [String] = []
+
+    // Each facade level holds its own uniquely-named reference to the mock, so an inheriting
+    // mock's facade (a subclass of the base facade) doesn't clash with the base's stored target.
+    let target = "_\(mockName)_target"
 
     for f in functions {
         let tracker = "_mock_\(f.name)"
@@ -166,8 +177,8 @@ private func render(mockName: String, conformsTo: String, functions: [FunctionMo
         }
         """)
 
-        stub.append(contentsOf: stubMethods(f, tracker: tracker))
-        verify.append("var \(f.name): \(trackerType)<\(argsType), \(f.returnType)> { target.\(tracker) }")
+        stub.append(contentsOf: stubMethods(f, tracker: tracker, target: target))
+        verify.append("var \(f.name): \(trackerType)<\(argsType), \(f.returnType)> { \(target).\(tracker) }")
     }
 
     for p in properties {
@@ -182,13 +193,13 @@ private func render(mockName: String, conformsTo: String, functions: [FunctionMo
                 set { \(setTracker).record((newValue)) }
             }
             """)
-            verify.append("var \(p.name)Set: Mock<\(p.type), Void> { target.\(setTracker) }")
+            verify.append("var \(p.name)Set: Mock<\(p.type), Void> { \(target).\(setTracker) }")
         } else {
             conformance.append("var \(p.name): \(p.type) { \(getTracker).record(()) }")
         }
-        stub.append("func \(p.name)(_ body: @escaping () -> \(p.type)) { target.\(getTracker).setStub { _ in body() } }")
-        stub.append("func \(p.name)(returns value: \(p.type)) { target.\(getTracker).setStub { _ in value } }")
-        verify.append("var \(p.name): Mock<Void, \(p.type)> { target.\(getTracker) }")
+        stub.append("func \(p.name)(_ body: @escaping () -> \(p.type)) { \(target).\(getTracker).setStub { _ in body() } }")
+        stub.append("func \(p.name)(returns value: \(p.type)) { \(target).\(getTracker).setStub { _ in value } }")
+        verify.append("var \(p.name): Mock<Void, \(p.type)> { \(target).\(getTracker) }")
     }
 
     func indent(_ lines: [String], _ spaces: Int) -> String {
@@ -197,33 +208,41 @@ private func render(mockName: String, conformsTo: String, functions: [FunctionMo
             .map { $0.isEmpty ? "" : pad + $0 }.joined(separator: "\n")
     }
 
+    // Inheriting mock: subclass the base's mock (inherits its members + trackers) and its facades.
+    let inheritList = (baseMock.map { "\($0), " } ?? "") + conformsTo + ", @unchecked Sendable"
+    // A non-inheriting mock declares its own init; an inheriting one inherits the base's.
+    let body = (baseMock == nil ? ["init() {}", ""] : []) + conformance
+    let overrideKw = baseMock == nil ? "" : "override "
+    let stubSuper = baseMock.map { ": \($0).Stub" } ?? ""
+    let verifySuper = baseMock.map { ": \($0).Verify" } ?? ""
+    let superCall = baseMock == nil ? "" : "; super.init(target)"
+    let facadeInit = "init(_ target: \(mockName)) { self.\(target) = target\(superCall) }"
+
     return """
-    final class \(mockName): \(conformsTo), @unchecked Sendable {
+    class \(mockName): \(inheritList) {
     \(indent(trackers, 4))
 
-        init() {}
+    \(indent(body, 4))
 
-    \(indent(conformance, 4))
+        \(overrideKw)var stub: Stub { Stub(self) }
+        \(overrideKw)var verify: Verify { Verify(self) }
 
-        var stub: Stub { Stub(self) }
-        var verify: Verify { Verify(self) }
-
-        struct Stub {
-            let target: \(mockName)
-            init(_ target: \(mockName)) { self.target = target }
+        class Stub\(stubSuper) {
+            let \(target): \(mockName)
+            \(facadeInit)
     \(indent(stub, 8))
         }
 
-        struct Verify {
-            let target: \(mockName)
-            init(_ target: \(mockName)) { self.target = target }
+        class Verify\(verifySuper) {
+            let \(target): \(mockName)
+            \(facadeInit)
     \(indent(verify, 8))
         }
     }
     """
 }
 
-private func stubMethods(_ f: FunctionModel, tracker: String) -> [String] {
+private func stubMethods(_ f: FunctionModel, tracker: String, target: String) -> [String] {
     let tryAwait = (f.isThrows ? "try " : "") + (f.isAsync ? "await " : "")
     let effects = (f.isAsync ? "async " : "") + (f.isThrows ? "throws " : "")
     let closureType = "(\(f.paramTypes.joined(separator: ", "))) \(effects)-> \(f.returnType)"
@@ -239,14 +258,14 @@ private func stubMethods(_ f: FunctionModel, tracker: String) -> [String] {
     }
 
     var methods: [String] = []
-    methods.append("func \(f.name)(_ body: @escaping \(closureType)) { target.\(tracker).setStub { a in \(forwardCall) } }")
+    methods.append("func \(f.name)(_ body: @escaping \(closureType)) { \(target).\(tracker).setStub { a in \(forwardCall) } }")
 
     if f.returnType != "Void" {
-        methods.append("func \(f.name)(returns value: \(f.returnType)) { target.\(tracker).setStub { _ in value } }")
-        methods.append("func \(f.name)(inSequence values: [\(f.returnType)]) { target.\(tracker).setSequence(values) }")
+        methods.append("func \(f.name)(returns value: \(f.returnType)) { \(target).\(tracker).setStub { _ in value } }")
+        methods.append("func \(f.name)(inSequence values: [\(f.returnType)]) { \(target).\(tracker).setSequence(values) }")
     }
     if f.isThrows {
-        methods.append("func \(f.name)(throws error: Error) { target.\(tracker).setError(error) }")
+        methods.append("func \(f.name)(throws error: Error) { \(target).\(tracker).setError(error) }")
     }
     if !f.paramTypes.isEmpty {
         let matcherParams = f.paramTypes.enumerated()
@@ -258,7 +277,7 @@ private func stubMethods(_ f: FunctionModel, tracker: String) -> [String] {
         } else {
             matchExpr = (0..<f.paramTypes.count).map { "m\($0).matches(a.\($0))" }.joined(separator: " && ")
         }
-        methods.append("func \(f.name)(\(matcherParams), _ body: @escaping \(closureType)) { target.\(tracker).setStub(when: { a in \(matchExpr) }, { a in \(forwardCall) }) }")
+        methods.append("func \(f.name)(\(matcherParams), _ body: @escaping \(closureType)) { \(target).\(tracker).setStub(when: { a in \(matchExpr) }, { a in \(forwardCall) }) }")
     }
     return methods
 }
@@ -302,9 +321,7 @@ private struct MockDiagnostic: DiagnosticMessage {
     static func overloadUnsupported(_ name: String) -> MockDiagnostic {
         MockDiagnostic("'@Mock' does not yet support overloaded members ('\(name)' is declared more than once)", "overloadUnsupported")
     }
-    static func inheritanceUnsupported(_ name: String) -> MockDiagnostic {
-        MockDiagnostic("'@Mock' does not yet support inherited protocol requirements (from '\(name)'); flatten the requirements into the mocked protocol", "inheritanceUnsupported")
-    }
+    static let multipleInheritanceUnsupported = MockDiagnostic("'@Mock' supports inheriting from at most one other protocol (which must itself be '@Mock'); flatten the rest into the mocked protocol", "multipleInheritanceUnsupported")
     static let staticUnsupported = MockDiagnostic("'@Mock' does not yet support static requirements", "staticUnsupported")
     static let initializerUnsupported = MockDiagnostic("'@Mock' does not yet support initializer requirements", "initializerUnsupported")
     static let subscriptUnsupported = MockDiagnostic("'@Mock' does not yet support subscript requirements", "subscriptUnsupported")

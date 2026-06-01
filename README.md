@@ -140,6 +140,27 @@ service.retries = 3
 service.verify.retriesSet.calledWith(3)   // true
 ```
 
+## Protocol inheritance
+
+A protocol may inherit from one other `@Mock`'d protocol. The generated mock subclasses the
+base's mock, so it implements both sets of requirements and you stub / verify inherited members
+through the same surfaces:
+
+```swift
+@Mock protocol Animal { func sound() -> String }
+@Mock protocol Dog: Animal { func fetch() -> String }
+
+let dog = DogMock()
+dog.stub.sound(returns: "woof")     // inherited member
+dog.stub.fetch(returns: "stick")    // own member
+dog.verify.sound.calledOnce         // inherited verification works too
+
+let animal: Animal = dog            // also usable as the base protocol
+```
+
+The base protocol must itself be annotated with `@Mock`. Inheriting from more than one
+requirement-bearing protocol isn't supported (flatten the rest into one).
+
 ## async / throws
 
 Every effect combination is supported, and a stub closure carries the same effects as the member:
@@ -164,7 +185,7 @@ following produce a clear compile-time diagnostic rather than a broken mock, and
 roadmap:
 
 - classes
-- inherited protocol requirements (`protocol B: A { … }` — flatten into one protocol for now)
+- inheriting from more than one requirement-bearing protocol
 - overloaded members
 - `static` requirements, initializers, subscripts, and associated types
 - throwing / async property accessors
