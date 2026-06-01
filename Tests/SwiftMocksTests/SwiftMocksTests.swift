@@ -123,6 +123,30 @@ final class MockBehaviourTests: XCTestCase {
     }
 }
 
+// MARK: - README snippets (kept compiling so docs can't drift)
+
+@Mock
+protocol ReadmeAPI {
+    func perform(with value: Int) -> String
+    func send(id: Int, tag: String)
+}
+
+final class ReadmeSnippetTests: XCTestCase {
+    func testSingleArgCalledWithValue() {
+        let api = ReadmeAPIMock()
+        api.stub.perform { value in "got \(value)" }
+        XCTAssertEqual(api.perform(with: 7), "got 7")
+        XCTAssertTrue(api.verify.perform.calledWith(7))            // plain Equatable value
+        XCTAssertTrue(api.verify.perform.calledWith(.where { $0 > 0 }))
+    }
+
+    func testMultiArgVoidTupleMatcher() {
+        let api = ReadmeAPIMock()
+        api.send(id: 1, tag: "x")                                 // Void: no stub needed
+        XCTAssertTrue(api.verify.send.calledWith(.where { $0.0 == 1 && $0.1 == "x" }))
+    }
+}
+
 // MARK: - Diagnostics
 
 let testMacros: [String: Macro.Type] = ["Mock": SwiftMocksMacro.self]
