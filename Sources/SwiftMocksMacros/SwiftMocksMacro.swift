@@ -35,14 +35,6 @@ public struct SwiftMocksMacro: PeerMacro {
         let functions = members.compactMap { $0.decl.as(FunctionDeclSyntax.self) }
         let properties = members.compactMap { $0.decl.as(VariableDeclSyntax.self) }
 
-        // Overloaded members would collide on tracker names and the `verify`/`stub` facades.
-        let duplicateNames = Dictionary(grouping: functions, by: { $0.name.text })
-            .filter { $1.count > 1 }.keys
-        if let name = duplicateNames.sorted().first {
-            context.diagnose(Diagnostic(node: node, message: MockDiagnostic.overloadUnsupported(name)))
-            return []
-        }
-
         let funcModels = functions.map(FunctionModel.init)
         let propModels = properties.compactMap { PropertyModel($0) }
 
@@ -107,6 +99,7 @@ private func unsupportedFeature(in proto: ProtocolDeclSyntax) -> MockDiagnostic?
 private struct FunctionModel {
     let name: String
     let paramTypes: [String]
+    let paramLabels: [String]       // external argument labels ("_" when unlabelled)
     let argNames: [String]          // internal parameter names, for forwarding
     let signature: String           // "(id: Int) async throws -> Data"
     let generics: String
@@ -119,6 +112,7 @@ private struct FunctionModel {
         name = f.name.text
         let params = f.signature.parameterClause.parameters
         paramTypes = params.map { $0.type.trimmedDescription }
+        paramLabels = params.map { $0.firstName.text }
         argNames = params.map { ($0.secondName ?? $0.firstName).text }
         signature = f.signature.trimmedDescription
         generics = f.genericParameterClause?.trimmedDescription ?? ""
@@ -150,6 +144,44 @@ private struct PropertyModel {
     }
 }
 
+// MARK: - Overload disambiguation
+
+/// The base name used for a function's tracker, stub methods, and verify accessor. Unique
+/// names are left as-is; overloaded names gain a discriminator derived from their parameter
+/// labels/types (or return type), so `verify.send_Int` / `verify.send_String` don't collide.
+private func accessorNames(for functions: [FunctionModel]) -> [String] {
+    let counts = Dictionary(grouping: functions, by: { $0.name }).mapValues { $0.count }
+    var used = Set<String>()
+    var result: [String] = []
+    for f in functions {
+        if counts[f.name] == 1 {
+            result.append(f.name)
+            used.insert(f.name)
+            continue
+        }
+        let disc = discriminator(f)
+        var candidate = f.name + "_" + disc
+        var suffix = 0
+        while used.contains(candidate) {
+            candidate = f.name + "_" + disc + "_\(suffix)"
+            suffix += 1
+        }
+        used.insert(candidate)
+        result.append(candidate)
+    }
+    return result
+}
+
+private func discriminator(_ f: FunctionModel) -> String {
+    func sanitize(_ s: String) -> String {
+        String(s.map { $0.isLetter || $0.isNumber ? $0 : "_" })
+    }
+    let tokens = zip(f.paramLabels, f.paramTypes).map { label, type in
+        label != "_" ? label : sanitize(type)
+    }
+    return tokens.isEmpty ? "ret_" + sanitize(f.returnType) : tokens.joined(separator: "_")
+}
+
 // MARK: - Rendering
 
 private func render(mockName: String, conformsTo: String, baseMock: String?, functions: [FunctionModel], properties: [PropertyModel]) -> String {
@@ -162,8 +194,11 @@ private func render(mockName: String, conformsTo: String, baseMock: String?, fun
     // mock's facade (a subclass of the base facade) doesn't clash with the base's stored target.
     let target = "_\(mockName)_target"
 
-    for f in functions {
-        let tracker = "_mock_\(f.name)"
+    // Overloaded members share a base name; give each a unique accessor for its tracker /
+    // stub / verify, while the conformance methods keep their real overloaded signatures.
+    let accessors = accessorNames(for: functions)
+    for (f, accessor) in zip(functions, accessors) {
+        let tracker = "_mock_\(accessor)"
         let trackerType = effectTrackerType(isAsync: f.isAsync, isThrows: f.isThrows)
         let argsType = f.paramTypes.isEmpty ? "Void" : "(" + f.paramTypes.joined(separator: ", ") + ")"
         let initArgs = defaultLiteral(for: f.returnType).map { "\"\(f.name)\", default: \($0)" } ?? "\"\(f.name)\""
@@ -177,8 +212,8 @@ private func render(mockName: String, conformsTo: String, baseMock: String?, fun
         }
         """)
 
-        stub.append(contentsOf: stubMethods(f, tracker: tracker, target: target))
-        verify.append("var \(f.name): \(trackerType)<\(argsType), \(f.returnType)> { \(target).\(tracker) }")
+        stub.append(contentsOf: stubMethods(f, name: accessor, tracker: tracker, target: target))
+        verify.append("var \(accessor): \(trackerType)<\(argsType), \(f.returnType)> { \(target).\(tracker) }")
     }
 
     for p in properties {
@@ -242,7 +277,7 @@ private func render(mockName: String, conformsTo: String, baseMock: String?, fun
     """
 }
 
-private func stubMethods(_ f: FunctionModel, tracker: String, target: String) -> [String] {
+private func stubMethods(_ f: FunctionModel, name: String, tracker: String, target: String) -> [String] {
     let tryAwait = (f.isThrows ? "try " : "") + (f.isAsync ? "await " : "")
     let effects = (f.isAsync ? "async " : "") + (f.isThrows ? "throws " : "")
     let closureType = "(\(f.paramTypes.joined(separator: ", "))) \(effects)-> \(f.returnType)"
@@ -258,14 +293,14 @@ private func stubMethods(_ f: FunctionModel, tracker: String, target: String) ->
     }
 
     var methods: [String] = []
-    methods.append("func \(f.name)(_ body: @escaping \(closureType)) { \(target).\(tracker).setStub { a in \(forwardCall) } }")
+    methods.append("func \(name)(_ body: @escaping \(closureType)) { \(target).\(tracker).setStub { a in \(forwardCall) } }")
 
     if f.returnType != "Void" {
-        methods.append("func \(f.name)(returns value: \(f.returnType)) { \(target).\(tracker).setStub { _ in value } }")
-        methods.append("func \(f.name)(inSequence values: [\(f.returnType)]) { \(target).\(tracker).setSequence(values) }")
+        methods.append("func \(name)(returns value: \(f.returnType)) { \(target).\(tracker).setStub { _ in value } }")
+        methods.append("func \(name)(inSequence values: [\(f.returnType)]) { \(target).\(tracker).setSequence(values) }")
     }
     if f.isThrows {
-        methods.append("func \(f.name)(throws error: Error) { \(target).\(tracker).setError(error) }")
+        methods.append("func \(name)(throws error: Error) { \(target).\(tracker).setError(error) }")
     }
     if !f.paramTypes.isEmpty {
         let matcherParams = f.paramTypes.enumerated()
@@ -277,7 +312,7 @@ private func stubMethods(_ f: FunctionModel, tracker: String, target: String) ->
         } else {
             matchExpr = (0..<f.paramTypes.count).map { "m\($0).matches(a.\($0))" }.joined(separator: " && ")
         }
-        methods.append("func \(f.name)(\(matcherParams), _ body: @escaping \(closureType)) { \(target).\(tracker).setStub(when: { a in \(matchExpr) }, { a in \(forwardCall) }) }")
+        methods.append("func \(name)(\(matcherParams), _ body: @escaping \(closureType)) { \(target).\(tracker).setStub(when: { a in \(matchExpr) }, { a in \(forwardCall) }) }")
     }
     return methods
 }
@@ -318,9 +353,6 @@ private struct MockDiagnostic: DiagnosticMessage {
 
     static let notProtocolOrClass = MockDiagnostic("'@Mock' can only be attached to a protocol or a class", "notProtocolOrClass")
     static let classTargetUnsupported = MockDiagnostic("'@Mock' on classes is not yet supported; attach it to a protocol", "classTargetUnsupported")
-    static func overloadUnsupported(_ name: String) -> MockDiagnostic {
-        MockDiagnostic("'@Mock' does not yet support overloaded members ('\(name)' is declared more than once)", "overloadUnsupported")
-    }
     static let multipleInheritanceUnsupported = MockDiagnostic("'@Mock' supports inheriting from at most one other protocol (which must itself be '@Mock'); flatten the rest into the mocked protocol", "multipleInheritanceUnsupported")
     static let staticUnsupported = MockDiagnostic("'@Mock' does not yet support static requirements", "staticUnsupported")
     static let initializerUnsupported = MockDiagnostic("'@Mock' does not yet support initializer requirements", "initializerUnsupported")

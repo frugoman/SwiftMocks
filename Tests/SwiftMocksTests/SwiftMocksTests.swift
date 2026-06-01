@@ -123,6 +123,36 @@ final class MockBehaviourTests: XCTestCase {
     }
 }
 
+// MARK: - Overloaded members
+
+@Mock
+protocol Sender {
+    func send(_ value: Int) -> String
+    func send(_ value: String) -> String
+    func move(x: Int)
+    func move(y: Int)
+}
+
+final class OverloadTests: XCTestCase {
+    func testTypeDistinguishedOverloads() {
+        let sender = SenderMock()
+        sender.stub.send_Int(returns: "int")
+        sender.stub.send_String(returns: "str")
+
+        XCTAssertEqual(sender.send(1), "int")
+        XCTAssertEqual(sender.send("a"), "str")
+        XCTAssertTrue(sender.verify.send_Int.calledOnce)
+        XCTAssertTrue(sender.verify.send_String.calledOnce)
+    }
+
+    func testLabelDistinguishedOverloads() {
+        let sender = SenderMock()
+        sender.move(x: 1)
+        XCTAssertTrue(sender.verify.move_x.calledWith(1))
+        XCTAssertTrue(sender.verify.move_y.neverCalled)
+    }
+}
+
 // MARK: - README snippets (kept compiling so docs can't drift)
 
 @Mock

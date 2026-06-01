@@ -122,6 +122,26 @@ Multi-argument members match on the argument tuple:
 api.verify.send.calledWith(.where { $0.0 == 1 && $0.1 == "x" })
 ```
 
+## Overloaded members
+
+Overloaded methods share a name, so their tracker, stub, and verify accessors get a
+discriminator suffix derived from the parameter labels (or types, or return type). The
+conformance methods keep their normal overloaded signatures:
+
+```swift
+@Mock
+protocol Sender {
+    func send(_ value: Int) -> String
+    func send(_ value: String) -> String
+}
+
+sender.stub.send_Int(returns: "int")
+sender.stub.send_String(returns: "str")
+
+sender.send(1)      // "int"
+sender.verify.send_Int.calledOnce
+```
+
 ## Properties
 
 A `{ get }` property is stubbed and verified through its getter:
@@ -186,7 +206,6 @@ roadmap:
 
 - classes
 - inheriting from more than one requirement-bearing protocol
-- overloaded members
 - `static` requirements, initializers, subscripts, and associated types
 - throwing / async property accessors
 
