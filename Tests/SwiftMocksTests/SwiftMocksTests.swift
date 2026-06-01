@@ -1,111 +1,147 @@
+import XCTest
+import SwiftMocks
 import SwiftSyntaxMacros
 import SwiftSyntaxMacrosTestSupport
-import XCTest
 import SwiftMocksMacros
-import SwiftMocks
 
-let testMacros: [String: Macro.Type] = [
-    "Mock": SwiftMocksMacro.self,
-]
+// MARK: - Subjects under test
 
-final class MockTests: XCTestCase {
-    func testMacro() {
-        assertMacroExpansion(
-            """
-            @Mock
-            class MyClass {
-                func doAction() {}
-            }
-            """,
-            expandedSource: """
-            class MyClass {
-                func doAction() {}
-            
-                let mock = MyClassMock()
-            
-                class MyClassMock {
-                     var doActionCalls = Mock<(Void), Void>()
-                        func doAction() {
-                        doActionCalls.record(())
-                    }
-                }
-            }
-            """,
-            macros: testMacros
-        )
+@Mock
+protocol Calculator {
+    var total: Int { get set }
+    var label: String { get }
+    func add(_ a: Int, _ b: Int) -> Int
+    func reset()
+    func maybe() -> Int?
+    func risky() throws -> Int
+    func fetch() async -> String
+    func load(id: Int) async throws -> String
+}
+
+enum TestError: Error { case boom }
+
+// MARK: - Behavioural tests
+
+final class MockBehaviourTests: XCTestCase {
+    func testRecordsCallsAndVerifies() {
+        let mock = CalculatorMock()
+        mock.stub.add { a, b in a + b }
+
+        XCTAssertEqual(mock.add(2, 3), 5)
+        XCTAssertTrue(mock.verify.add.calledOnce)
+        XCTAssertEqual(mock.verify.add.callsCount, 1)
+        XCTAssertTrue(mock.verify.reset.neverCalled)
     }
-    
-    func testMacroWithThrows() {
-        assertMacroExpansion(
-            """
-            @Mock
-            class MyClass {
-                func doAction() throws {}
-            }
-            """,
-            expandedSource: """
-            class MyClass {
-                func doAction() throws {}
-            
-                let mock = MyClassMock()
-            
-                class MyClassMock {
-                     var doActionCalls = ThrowingMock<(Void), Void>()
-                        func doAction() throws {
-                        try doActionCalls.record(())
-                    }
-                }
-            }
-            """,
-            macros: testMacros
-        )
+
+    func testStubReturns() {
+        let mock = CalculatorMock()
+        mock.stub.add(returns: 99)
+        XCTAssertEqual(mock.add(1, 1), 99)
     }
-    
-    func testMacroWithFunctionParameters() {
-        assertMacroExpansion(
-            """
-            @Mock
-            class MyClass {
-                func doAction(withInteger x: Int) {}
-            }
-            """,
-            expandedSource: """
-            class MyClass {
-                func doAction(withInteger x: Int) {}
-            
-                let mock = MyClassMock()
-            
-                class MyClassMock {
-                     var doActionCalls = Mock<(Int), Void>()
-                        func doAction(withInteger x: Int) {
-                        doActionCalls.record((x))
-                    }
-                }
-            }
-            """,
-            macros: testMacros
-        )
+
+    func testCalledWithValueAndMatcher() {
+        let mock = CalculatorMock()
+        mock.stub.add { _, _ in 0 }
+        _ = mock.add(2, 3)
+
+        XCTAssertTrue(mock.verify.add.calledWith(.where { $0.0 == 2 && $0.1 == 3 }))
+        XCTAssertTrue(mock.verify.add.calledWith(.any))
+        XCTAssertFalse(mock.verify.add.calledWith(.where { $0.0 == 9 }))
     }
-    
-    func testMacroWithVariables() {
+
+    func testTriviallyDefaultedReturnsNeedNoStub() {
+        let mock = CalculatorMock()
+        mock.reset()                          // Void return: records, no stub needed
+        XCTAssertEqual(mock.maybe(), nil)     // Optional return: defaults to nil
+        XCTAssertTrue(mock.verify.reset.calledOnce)
+        XCTAssertEqual(mock.verify.maybe.callsCount, 1)
+    }
+
+    func testThrowingErrorStub() {
+        let mock = CalculatorMock()
+        mock.stub.risky(throws: TestError.boom)
+        XCTAssertThrowsError(try mock.risky()) { error in
+            XCTAssertEqual(error as? TestError, .boom)
+        }
+        XCTAssertTrue(mock.verify.risky.calledOnce)
+    }
+
+    func testThrowingValueStub() throws {
+        let mock = CalculatorMock()
+        mock.stub.risky(returns: 7)
+        XCTAssertEqual(try mock.risky(), 7)
+    }
+
+    func testAsync() async {
+        let mock = CalculatorMock()
+        mock.stub.fetch(returns: "hi")
+        let value = await mock.fetch()
+        XCTAssertEqual(value, "hi")
+        XCTAssertTrue(mock.verify.fetch.calledOnce)
+    }
+
+    func testAsyncThrows() async throws {
+        let mock = CalculatorMock()
+        mock.stub.load { id in "loaded-\(id)" }
+        let value = try await mock.load(id: 3)
+        XCTAssertEqual(value, "loaded-3")
+        XCTAssertTrue(mock.verify.load.calledWith(.where { $0 == 3 }))
+    }
+
+    func testSequence() {
+        let mock = CalculatorMock()
+        mock.stub.add(inSequence: [10, 20, 30])
+        XCTAssertEqual(mock.add(0, 0), 10)
+        XCTAssertEqual(mock.add(0, 0), 20)
+        XCTAssertEqual(mock.add(0, 0), 30)
+        XCTAssertEqual(mock.add(0, 0), 30)   // exhausted: repeats last
+    }
+
+    func testConditionalStub() {
+        let mock = CalculatorMock()
+        mock.stub.add { _, _ in -1 }                       // fallback
+        mock.stub.add(when: .eq(1), .eq(1)) { _, _ in 2 }  // conditional
+
+        XCTAssertEqual(mock.add(1, 1), 2)   // conditional wins
+        XCTAssertEqual(mock.add(5, 5), -1)  // falls back
+    }
+
+    func testSettableProperty() {
+        let mock = CalculatorMock()
+        mock.stub.total(returns: 0)
+        mock.total = 42
+        _ = mock.total
+
+        XCTAssertTrue(mock.verify.totalSet.calledWith(42))
+        XCTAssertTrue(mock.verify.total.calledOnce)
+    }
+
+    func testGetOnlyProperty() {
+        let mock = CalculatorMock()
+        mock.stub.label(returns: "name")
+        XCTAssertEqual(mock.label, "name")
+    }
+}
+
+// MARK: - Diagnostics
+
+let testMacros: [String: Macro.Type] = ["Mock": SwiftMocksMacro.self]
+
+final class MockDiagnosticsTests: XCTestCase {
+    func testClassTargetIsDiagnosed() {
         assertMacroExpansion(
             """
             @Mock
-            class MyClass {
-                var priority: Int { 0 }
+            class Foo {
             }
             """,
             expandedSource: """
-            class MyClass {
-                var priority: Int { 0 }
-            
-                let mock = MyClassMock()
-            
-                class MyClassMock {
-                    var priority: MockVariable<Int > = .init()
-                }
+            class Foo {
             }
             """,
+            diagnostics: [
+                DiagnosticSpec(message: "'@Mock' on classes is not yet supported; attach it to a protocol", line: 1, column: 1)
+            ],
             macros: testMacros
         )
     }
