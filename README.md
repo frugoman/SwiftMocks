@@ -232,12 +232,21 @@ roadmap:
 ## Failure reporting
 
 Failures that originate inside a mock (such as calling an un-stubbed returning member) are routed
-through `SwiftMocks.failureReporter`. By default it traps; you can point it at your test framework:
+through `SwiftMocks.failureReporter`. The core library has no test-framework dependency; thin
+adapter modules wire it to your framework — call the installer once (e.g. in test setup):
 
 ```swift
-SwiftMocks.failureReporter = { message, file, line in
-    XCTFail(message, file: file, line: line)
-}
+import SwiftMocksXCTest
+SwiftMocks.useXCTest()        // routes to XCTFail
+
+import SwiftMocksTesting
+SwiftMocks.useSwiftTesting()  // routes to Issue.record
+```
+
+Or set it yourself:
+
+```swift
+SwiftMocks.failureReporter = { message, file, line in /* … */ }
 ```
 
 ## License

@@ -13,6 +13,15 @@ let package = Package(
             name: "SwiftMocks",
             targets: ["SwiftMocks"]
         ),
+        // Thin adapters that route in-mock failures to a test framework.
+        .library(
+            name: "SwiftMocksXCTest",
+            targets: ["SwiftMocksXCTest"]
+        ),
+        .library(
+            name: "SwiftMocksTesting",
+            targets: ["SwiftMocksTesting"]
+        ),
         .executable(
             name: "SwiftMocksClient",
             targets: ["SwiftMocksClient"]
@@ -38,6 +47,10 @@ let package = Package(
         // Library that exposes a macro as part of its API, which is used in client programs.
         .target(name: "SwiftMocks", dependencies: ["SwiftMocksMacros"]),
 
+        // Failure-reporter adapters: route SwiftMocks failures to a test framework.
+        .target(name: "SwiftMocksXCTest", dependencies: ["SwiftMocks"]),
+        .target(name: "SwiftMocksTesting", dependencies: ["SwiftMocks"]),
+
         // A client of the library, which is able to use the macro in its own code.
         .executableTarget(name: "SwiftMocksClient", dependencies: ["SwiftMocks"]),
 
@@ -47,6 +60,8 @@ let package = Package(
             dependencies: [
                 "SwiftMocks",
                 "SwiftMocksMacros",
+                "SwiftMocksXCTest",
+                "SwiftMocksTesting",
                 .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
             ]
         ),

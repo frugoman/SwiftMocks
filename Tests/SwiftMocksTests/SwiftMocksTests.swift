@@ -1,5 +1,8 @@
 import XCTest
+import Testing
 import SwiftMocks
+import SwiftMocksXCTest
+import SwiftMocksTesting
 import SwiftSyntaxMacros
 import SwiftSyntaxMacrosTestSupport
 import SwiftMocksMacros
@@ -212,6 +215,29 @@ final class ReadmeSnippetTests: XCTestCase {
         let api = ReadmeAPIMock()
         api.send(id: 1, tag: "x")                                 // Void: no stub needed
         XCTAssertTrue(api.verify.send.calledWith(.where { $0.0 == 1 && $0.1 == "x" }))
+    }
+}
+
+// MARK: - Failure-reporter adapters
+
+final class XCTestAdapterTests: XCTestCase {
+    func testRoutesFailureToXCTFail() {
+        let original = SwiftMocks.failureReporter
+        defer { SwiftMocks.failureReporter = original }
+
+        SwiftMocks.useXCTest()
+        XCTExpectFailure("a SwiftMocks failure should surface as an XCTest failure")
+        SwiftMocks.failureReporter("boom", #filePath, #line)
+    }
+}
+
+@Test func swiftTestingAdapterRecordsIssue() {
+    let original = SwiftMocks.failureReporter
+    defer { SwiftMocks.failureReporter = original }
+
+    SwiftMocks.useSwiftTesting()
+    withKnownIssue("a SwiftMocks failure should surface as a recorded issue") {
+        SwiftMocks.failureReporter("boom", #filePath, #line)
     }
 }
 
