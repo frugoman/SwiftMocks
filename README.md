@@ -208,6 +208,7 @@ roadmap:
 - inheriting from more than one requirement-bearing protocol
 - `static` requirements, initializers, subscripts, and associated types
 - throwing / async property accessors
+- `inout` and variadic parameters
 
 ## Failure reporting
 

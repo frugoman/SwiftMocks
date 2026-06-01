@@ -76,8 +76,13 @@ private func unsupportedFeature(in proto: ProtocolDeclSyntax) -> MockDiagnostic?
         if decl.is(SubscriptDeclSyntax.self) { return .subscriptUnsupported }
         if decl.is(AssociatedTypeDeclSyntax.self) { return .associatedTypeUnsupported }
 
-        if let function = decl.as(FunctionDeclSyntax.self), isStatic(function.modifiers) {
-            return .staticUnsupported
+        if let function = decl.as(FunctionDeclSyntax.self) {
+            if isStatic(function.modifiers) { return .staticUnsupported }
+            for param in function.signature.parameterClause.parameters {
+                // These can't live in the tracker's argument tuple / stub closure.
+                if param.ellipsis != nil { return .variadicUnsupported }
+                if param.type.trimmedDescription.hasPrefix("inout ") { return .inoutUnsupported }
+            }
         }
         if let variable = decl.as(VariableDeclSyntax.self) {
             if isStatic(variable.modifiers) { return .staticUnsupported }
@@ -359,4 +364,6 @@ private struct MockDiagnostic: DiagnosticMessage {
     static let subscriptUnsupported = MockDiagnostic("'@Mock' does not yet support subscript requirements", "subscriptUnsupported")
     static let associatedTypeUnsupported = MockDiagnostic("'@Mock' does not yet support associated types", "associatedTypeUnsupported")
     static let effectfulAccessorUnsupported = MockDiagnostic("'@Mock' does not yet support throwing or async property accessors", "effectfulAccessorUnsupported")
+    static let variadicUnsupported = MockDiagnostic("'@Mock' does not yet support variadic parameters", "variadicUnsupported")
+    static let inoutUnsupported = MockDiagnostic("'@Mock' does not yet support 'inout' parameters", "inoutUnsupported")
 }

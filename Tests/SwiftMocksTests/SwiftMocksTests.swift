@@ -240,6 +240,46 @@ final class MockDiagnosticsTests: XCTestCase {
         )
     }
 
+    func testVariadicParameterIsDiagnosed() {
+        assertMacroExpansion(
+            """
+            @Mock
+            protocol Printer {
+                func print(_ items: Int...)
+            }
+            """,
+            expandedSource: """
+            protocol Printer {
+                func print(_ items: Int...)
+            }
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "'@Mock' does not yet support variadic parameters", line: 1, column: 1)
+            ],
+            macros: testMacros
+        )
+    }
+
+    func testInoutParameterIsDiagnosed() {
+        assertMacroExpansion(
+            """
+            @Mock
+            protocol Mutator {
+                func mutate(_ value: inout Int)
+            }
+            """,
+            expandedSource: """
+            protocol Mutator {
+                func mutate(_ value: inout Int)
+            }
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "'@Mock' does not yet support 'inout' parameters", line: 1, column: 1)
+            ],
+            macros: testMacros
+        )
+    }
+
     func testSubscriptRequirementIsDiagnosed() {
         assertMacroExpansion(
             """
