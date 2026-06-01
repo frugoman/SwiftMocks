@@ -59,8 +59,28 @@ let service = ServiceMock()   // conforms to Service
 Every member forwards into a tracker that records calls and resolves stubs. You never write the
 forwarding yourself.
 
-> `@Mock` currently supports **protocols**. Class support is in progress; attaching `@Mock` to a
-> class produces a clear compile-time diagnostic for now.
+### Mocking a class
+
+`@Mock` also works on a class: the generated mock subclasses it and **overrides** its members,
+so a mocked call never reaches the real implementation. Use this when you can't extract a
+protocol.
+
+```swift
+@Mock
+class Repository {
+    func load(id: Int) -> String { realLoad(id) }
+    var count: Int { realCount() }
+}
+
+let repo = RepositoryMock()           // is-a Repository
+repo.stub.load { id in "mock-\(id)" }
+repo.load(id: 1)                      // "mock-1" — the override, not realLoad
+```
+
+Because a mock must intercept *every* member, a class member that can't be overridden is a
+compile-time error (rather than silently calling real code): `final` members, stored
+properties, `private` members, and `static` members. Make the member computed/overridable, or
+extract a protocol. Initializers are inherited, so the mock is constructed just like the class.
 
 ## Stubbing — the `.stub` surface
 
@@ -204,7 +224,6 @@ repo.stub.fetch { id in "row-\(id)" }
 following produce a clear compile-time diagnostic rather than a broken mock, and are on the
 roadmap:
 
-- classes
 - inheriting from more than one requirement-bearing protocol
 - `static` requirements, initializers, subscripts, and associated types
 - throwing / async property accessors

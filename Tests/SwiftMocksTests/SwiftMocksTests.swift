@@ -123,6 +123,44 @@ final class MockBehaviourTests: XCTestCase {
     }
 }
 
+// MARK: - Class target
+
+@Mock
+class Repository {
+    func load(id: Int) -> String { "real-\(id)" }
+    func save() throws {}
+    var count: Int { -1 }
+}
+
+final class ClassTargetTests: XCTestCase {
+    func testOverridesMethodAndRecords() {
+        let repo = RepositoryMock()
+        repo.stub.load { id in "mock-\(id)" }
+
+        XCTAssertEqual(repo.load(id: 1), "mock-1")   // overridden, not the real "real-1"
+        XCTAssertTrue(repo.verify.load.calledWith(1))
+    }
+
+    func testOverridesComputedProperty() {
+        let repo = RepositoryMock()
+        repo.stub.count(returns: 7)
+        XCTAssertEqual(repo.count, 7)                // overridden, not the real -1
+        XCTAssertTrue(repo.verify.count.calledOnce)
+    }
+
+    func testThrowingVoidMethodIsSpyable() throws {
+        let repo = RepositoryMock()
+        try repo.save()                              // Void: no stub needed
+        XCTAssertTrue(repo.verify.save.calledOnce)
+    }
+
+    func testUsableThroughBaseClass() {
+        let repo: Repository = RepositoryMock()      // is-a Repository
+        (repo as? RepositoryMock)?.stub.load { _ in "x" }
+        XCTAssertEqual(repo.load(id: 9), "x")
+    }
+}
+
 // MARK: - Overloaded members
 
 @Mock
@@ -182,19 +220,41 @@ final class ReadmeSnippetTests: XCTestCase {
 let testMacros: [String: Macro.Type] = ["Mock": SwiftMocksMacro.self]
 
 final class MockDiagnosticsTests: XCTestCase {
-    func testClassTargetIsDiagnosed() {
+    func testFinalClassMemberIsDiagnosed() {
         assertMacroExpansion(
             """
             @Mock
-            class Foo {
+            class Service {
+                final func locked() {}
             }
             """,
             expandedSource: """
-            class Foo {
+            class Service {
+                final func locked() {}
             }
             """,
             diagnostics: [
-                DiagnosticSpec(message: "'@Mock' on classes is not yet supported; attach it to a protocol", line: 1, column: 1)
+                DiagnosticSpec(message: "'@Mock' can't mock a 'final' member of a class; remove 'final' or extract a protocol", line: 1, column: 1)
+            ],
+            macros: testMacros
+        )
+    }
+
+    func testStoredPropertyIsDiagnosed() {
+        assertMacroExpansion(
+            """
+            @Mock
+            class Service {
+                var count: Int = 0
+            }
+            """,
+            expandedSource: """
+            class Service {
+                var count: Int = 0
+            }
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "'@Mock' can't mock a stored property of a class; make it computed or extract a protocol", line: 1, column: 1)
             ],
             macros: testMacros
         )

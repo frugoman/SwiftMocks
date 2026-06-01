@@ -15,35 +15,69 @@ public struct SwiftMocksMacro: PeerMacro {
         providingPeersOf declaration: some DeclSyntaxProtocol,
         in context: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
-        guard let proto = declaration.as(ProtocolDeclSyntax.self) else {
-            if declaration.is(ClassDeclSyntax.self) {
-                context.diagnose(Diagnostic(node: node, message: MockDiagnostic.classTargetUnsupported))
-            } else {
-                context.diagnose(Diagnostic(node: node, message: MockDiagnostic.notProtocolOrClass))
-            }
-            return []
+        if let proto = declaration.as(ProtocolDeclSyntax.self) {
+            return try expandProtocol(proto, node: node, in: context)
         }
-
-        // Reject protocol features the generator can't yet honour, with a clear message —
-        // rather than emitting a mock that fails to conform with a cryptic downstream error.
-        if let diagnostic = unsupportedFeature(in: proto) {
-            context.diagnose(Diagnostic(node: node, message: diagnostic))
-            return []
+        if let classDecl = declaration.as(ClassDeclSyntax.self) {
+            return try expandClass(classDecl, node: node, in: context)
         }
-
-        let members = proto.memberBlock.members
-        let functions = members.compactMap { $0.decl.as(FunctionDeclSyntax.self) }
-        let properties = members.compactMap { $0.decl.as(VariableDeclSyntax.self) }
-
-        let funcModels = functions.map(FunctionModel.init)
-        let propModels = properties.compactMap { PropertyModel($0) }
-
-        let mockName = proto.name.text + "Mock"
-        // A single inherited protocol is mocked by subclassing its `<Base>Mock`.
-        let baseMock = realBases(of: proto).first.map { $0 + "Mock" }
-        let source = render(mockName: mockName, conformsTo: proto.name.text, baseMock: baseMock, functions: funcModels, properties: propModels)
-        return [DeclSyntax(stringLiteral: source)]
+        context.diagnose(Diagnostic(node: node, message: MockDiagnostic.notProtocolOrClass))
+        return []
     }
+}
+
+private func expandProtocol(_ proto: ProtocolDeclSyntax, node: AttributeSyntax, in context: some MacroExpansionContext) throws -> [DeclSyntax] {
+    // Reject protocol features the generator can't yet honour, with a clear message —
+    // rather than emitting a mock that fails to conform with a cryptic downstream error.
+    if let diagnostic = unsupportedFeature(in: proto) {
+        context.diagnose(Diagnostic(node: node, message: diagnostic))
+        return []
+    }
+
+    let members = proto.memberBlock.members
+    let funcModels = members.compactMap { $0.decl.as(FunctionDeclSyntax.self) }.map(FunctionModel.init)
+    let propModels = members.compactMap { $0.decl.as(VariableDeclSyntax.self) }.compactMap(PropertyModel.init)
+
+    let mockName = proto.name.text + "Mock"
+    // A single inherited protocol is mocked by subclassing its `<Base>Mock`.
+    let baseMock = realBases(of: proto).first.map { $0 + "Mock" }
+    let inherits = (baseMock.map { [$0] } ?? []) + [proto.name.text]
+    let source = render(
+        mockName: mockName,
+        inherits: inherits,
+        memberPrefix: "",
+        emitInit: baseMock == nil,
+        facadeBase: baseMock,
+        functions: funcModels,
+        properties: propModels
+    )
+    return [DeclSyntax(stringLiteral: source)]
+}
+
+private func expandClass(_ classDecl: ClassDeclSyntax, node: AttributeSyntax, in context: some MacroExpansionContext) throws -> [DeclSyntax] {
+    // A class mock subclasses the class and overrides its members to intercept them. Every
+    // member must be overridable, or compilation fails with a clear message (no silent
+    // pass-through to real behaviour).
+    if let diagnostic = unsupportedClassMember(in: classDecl) {
+        context.diagnose(Diagnostic(node: node, message: diagnostic))
+        return []
+    }
+
+    let members = classDecl.memberBlock.members
+    let funcModels = members.compactMap { $0.decl.as(FunctionDeclSyntax.self) }.map(FunctionModel.init)
+    let propModels = members.compactMap { $0.decl.as(VariableDeclSyntax.self) }.compactMap(PropertyModel.init)
+
+    let mockName = classDecl.name.text + "Mock"
+    let source = render(
+        mockName: mockName,
+        inherits: [classDecl.name.text],
+        memberPrefix: "override ",
+        emitInit: false,                  // inherit the class's initializers
+        facadeBase: nil,
+        functions: funcModels,
+        properties: propModels
+    )
+    return [DeclSyntax(stringLiteral: source)]
 }
 
 // MARK: - Validation
@@ -97,6 +131,53 @@ private func unsupportedFeature(in proto: ProtocolDeclSyntax) -> MockDiagnostic?
         }
     }
     return nil
+}
+
+/// Returns a diagnostic for the first class member that can't be intercepted by overriding,
+/// or nil if every member is mockable. A class mock must intercept everything — it never
+/// silently passes a call through to real behaviour.
+private func unsupportedClassMember(in classDecl: ClassDeclSyntax) -> MockDiagnostic? {
+    func has(_ modifiers: DeclModifierListSyntax, _ keywords: Keyword...) -> Bool {
+        modifiers.contains { mod in keywords.contains { mod.name.tokenKind == .keyword($0) } }
+    }
+    for member in classDecl.memberBlock.members {
+        let decl = member.decl
+        if decl.is(InitializerDeclSyntax.self) || decl.is(DeinitializerDeclSyntax.self) { continue }
+        if decl.is(SubscriptDeclSyntax.self) { return .subscriptUnsupported }
+
+        if let f = decl.as(FunctionDeclSyntax.self) {
+            if has(f.modifiers, .final) { return .finalUnsupported }
+            if has(f.modifiers, .static, .class) { return .staticUnsupported }
+            if has(f.modifiers, .private, .fileprivate) { return .privateUnsupported }
+            for param in f.signature.parameterClause.parameters {
+                if param.ellipsis != nil { return .variadicUnsupported }
+                if param.type.trimmedDescription.hasPrefix("inout ") { return .inoutUnsupported }
+            }
+        } else if let v = decl.as(VariableDeclSyntax.self) {
+            if has(v.modifiers, .final) { return .finalUnsupported }
+            if has(v.modifiers, .static, .class) { return .staticUnsupported }
+            if has(v.modifiers, .private, .fileprivate) { return .privateUnsupported }
+            if isStoredProperty(v) { return .storedPropertyUnsupported }
+        }
+        // Other member kinds (typealiases, nested types) need no interception.
+    }
+    return nil
+}
+
+/// Whether a class property is stored (and thus can't be overridden), as opposed to a
+/// computed property with a getter.
+private func isStoredProperty(_ v: VariableDeclSyntax) -> Bool {
+    if v.bindingSpecifier.tokenKind == .keyword(.let) { return true }
+    for binding in v.bindings {
+        guard let accessorBlock = binding.accessorBlock else { return true }   // no accessors → stored
+        switch accessorBlock.accessors {
+        case .getter:
+            return false                                                       // computed, get-only
+        case .accessors(let list):
+            return !list.contains { $0.accessorSpecifier.tokenKind == .keyword(.get) }  // only observers → stored
+        }
+    }
+    return false
 }
 
 // MARK: - Member models
@@ -189,7 +270,7 @@ private func discriminator(_ f: FunctionModel) -> String {
 
 // MARK: - Rendering
 
-private func render(mockName: String, conformsTo: String, baseMock: String?, functions: [FunctionModel], properties: [PropertyModel]) -> String {
+private func render(mockName: String, inherits: [String], memberPrefix: String, emitInit: Bool, facadeBase: String?, functions: [FunctionModel], properties: [PropertyModel]) -> String {
     var trackers: [String] = []
     var conformance: [String] = []
     var stub: [String] = []
@@ -212,7 +293,7 @@ private func render(mockName: String, conformsTo: String, baseMock: String?, fun
         let tryAwait = (f.isThrows ? "try " : "") + (f.isAsync ? "await " : "")
         let forwardArgs = f.argNames.joined(separator: ", ")
         conformance.append("""
-        func \(f.name)\(f.generics)\(f.signature)\(f.whereClause) {
+        \(memberPrefix)func \(f.name)\(f.generics)\(f.signature)\(f.whereClause) {
             \(tryAwait)\(tracker).record((\(forwardArgs)))
         }
         """)
@@ -228,14 +309,14 @@ private func render(mockName: String, conformsTo: String, baseMock: String?, fun
             let setTracker = "_mock_\(p.name)_set"
             trackers.append("let \(setTracker) = Mock<\(p.type), Void>(\"\(p.name)\", default: ())")
             conformance.append("""
-            var \(p.name): \(p.type) {
+            \(memberPrefix)var \(p.name): \(p.type) {
                 get { \(getTracker).record(()) }
                 set { \(setTracker).record((newValue)) }
             }
             """)
             verify.append("var \(p.name)Set: Mock<\(p.type), Void> { \(target).\(setTracker) }")
         } else {
-            conformance.append("var \(p.name): \(p.type) { \(getTracker).record(()) }")
+            conformance.append("\(memberPrefix)var \(p.name): \(p.type) { \(getTracker).record(()) }")
         }
         stub.append("func \(p.name)(_ body: @escaping () -> \(p.type)) { \(target).\(getTracker).setStub { _ in body() } }")
         stub.append("func \(p.name)(returns value: \(p.type)) { \(target).\(getTracker).setStub { _ in value } }")
@@ -248,14 +329,15 @@ private func render(mockName: String, conformsTo: String, baseMock: String?, fun
             .map { $0.isEmpty ? "" : pad + $0 }.joined(separator: "\n")
     }
 
-    // Inheriting mock: subclass the base's mock (inherits its members + trackers) and its facades.
-    let inheritList = (baseMock.map { "\($0), " } ?? "") + conformsTo + ", @unchecked Sendable"
-    // A non-inheriting mock declares its own init; an inheriting one inherits the base's.
-    let body = (baseMock == nil ? ["init() {}", ""] : []) + conformance
-    let overrideKw = baseMock == nil ? "" : "override "
-    let stubSuper = baseMock.map { ": \($0).Stub" } ?? ""
-    let verifySuper = baseMock.map { ": \($0).Verify" } ?? ""
-    let superCall = baseMock == nil ? "" : "; super.init(target)"
+    let inheritList = (inherits + ["@unchecked Sendable"]).joined(separator: ", ")
+    // A standalone mock declares its own init; one that subclasses (a class or a base mock)
+    // inherits the superclass initializers.
+    let body = (emitInit ? ["init() {}", ""] : []) + conformance
+    // The stub/verify facades inherit only when subclassing another mock's facades.
+    let overrideKw = facadeBase == nil ? "" : "override "
+    let stubSuper = facadeBase.map { ": \($0).Stub" } ?? ""
+    let verifySuper = facadeBase.map { ": \($0).Verify" } ?? ""
+    let superCall = facadeBase == nil ? "" : "; super.init(target)"
     let facadeInit = "init(_ target: \(mockName)) { self.\(target) = target\(superCall) }"
 
     return """
@@ -357,7 +439,9 @@ private struct MockDiagnostic: DiagnosticMessage {
     }
 
     static let notProtocolOrClass = MockDiagnostic("'@Mock' can only be attached to a protocol or a class", "notProtocolOrClass")
-    static let classTargetUnsupported = MockDiagnostic("'@Mock' on classes is not yet supported; attach it to a protocol", "classTargetUnsupported")
+    static let finalUnsupported = MockDiagnostic("'@Mock' can't mock a 'final' member of a class; remove 'final' or extract a protocol", "finalUnsupported")
+    static let privateUnsupported = MockDiagnostic("'@Mock' can't mock a 'private'/'fileprivate' member of a class; raise its access or extract a protocol", "privateUnsupported")
+    static let storedPropertyUnsupported = MockDiagnostic("'@Mock' can't mock a stored property of a class; make it computed or extract a protocol", "storedPropertyUnsupported")
     static let multipleInheritanceUnsupported = MockDiagnostic("'@Mock' supports inheriting from at most one other protocol (which must itself be '@Mock'); flatten the rest into the mocked protocol", "multipleInheritanceUnsupported")
     static let staticUnsupported = MockDiagnostic("'@Mock' does not yet support static requirements", "staticUnsupported")
     static let initializerUnsupported = MockDiagnostic("'@Mock' does not yet support initializer requirements", "initializerUnsupported")

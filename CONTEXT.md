@@ -36,8 +36,10 @@ The declaration `@Mock` is attached to. Two kinds, with different status:
 - **Class target (secondary)** — supported with documented limits. The Mock Type subclasses
   the annotated class and overrides its members. A class target is only valid if **every**
   member can be intercepted by overriding. Members that cannot be overridden — `final`,
-  stored properties, `private`, `static`/`class` members, initializers — are a **compile
-  error**, not a silent skip. The fix is to make the member `open` or extract a protocol.
+  stored properties, `private`/`fileprivate`, `static`/`class` members — are a **compile
+  error**, not a silent skip. The fix is to make the member computed/overridable, or extract
+  a protocol. Initializers are **inherited** (the mock is constructed just like the class),
+  not mocked.
 
 A Mock Type never silently passes a call through to a real implementation; if it can't
 intercept a member, compilation fails.
