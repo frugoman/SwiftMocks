@@ -2,7 +2,7 @@ import SwiftSyntax
 import SwiftSyntaxMacros
 
 public struct SwiftMocksMacro: MemberMacro {
-    public static func expansion(of node: AttributeSyntax, providingMembersOf declaration: some DeclGroupSyntax, in context: some MacroExpansionContext) throws -> [DeclSyntax] {
+    public static func expansion(of node: AttributeSyntax, providingMembersOf declaration: some DeclGroupSyntax, conformingTo protocols: [TypeSyntax], in context: some MacroExpansionContext) throws -> [DeclSyntax] {
         guard let classDecl = declaration.as(ClassDeclSyntax.self) else { return [] }
         let stackIdentifier = TokenSyntax.identifier(classDecl.name.text + "Mock")
         
