@@ -157,6 +157,18 @@ repo.stub.risky(throws: MyError.boom)
 repo.stub.fetch { id in "row-\(id)" }
 ```
 
+## Current limitations
+
+`@Mock` targets **protocols** that declare their own instance methods and properties. The
+following produce a clear compile-time diagnostic rather than a broken mock, and are on the
+roadmap:
+
+- classes
+- inherited protocol requirements (`protocol B: A { … }` — flatten into one protocol for now)
+- overloaded members
+- `static` requirements, initializers, subscripts, and associated types
+- throwing / async property accessors
+
 ## Failure reporting
 
 Failures that originate inside a mock (such as calling an un-stubbed returning member) are routed

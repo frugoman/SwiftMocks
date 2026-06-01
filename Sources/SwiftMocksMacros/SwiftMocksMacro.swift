@@ -24,6 +24,13 @@ public struct SwiftMocksMacro: PeerMacro {
             return []
         }
 
+        // Reject protocol features the generator can't yet honour, with a clear message —
+        // rather than emitting a mock that fails to conform with a cryptic downstream error.
+        if let diagnostic = unsupportedFeature(in: proto) {
+            context.diagnose(Diagnostic(node: node, message: diagnostic))
+            return []
+        }
+
         let members = proto.memberBlock.members
         let functions = members.compactMap { $0.decl.as(FunctionDeclSyntax.self) }
         let properties = members.compactMap { $0.decl.as(VariableDeclSyntax.self) }
@@ -43,6 +50,49 @@ public struct SwiftMocksMacro: PeerMacro {
         let source = render(mockName: mockName, conformsTo: proto.name.text, functions: funcModels, properties: propModels)
         return [DeclSyntax(stringLiteral: source)]
     }
+}
+
+// MARK: - Validation
+
+/// Returns a diagnostic for the first unsupported feature found in `proto`, or nil if the
+/// protocol is fully supported by the generator.
+private func unsupportedFeature(in proto: ProtocolDeclSyntax) -> MockDiagnostic? {
+    // Inherited protocol requirements aren't visible to a syntactic macro, so a mock can't
+    // implement them. Allow only constraints that carry no requirements.
+    let allowedInherited: Set<String> = ["AnyObject", "Sendable", "Any"]
+    for inherited in proto.inheritanceClause?.inheritedTypes ?? [] {
+        let name = inherited.type.trimmedDescription
+        if !allowedInherited.contains(name) {
+            return .inheritanceUnsupported(name)
+        }
+    }
+
+    func isStatic(_ modifiers: DeclModifierListSyntax) -> Bool {
+        modifiers.contains { $0.name.tokenKind == .keyword(.static) || $0.name.tokenKind == .keyword(.class) }
+    }
+
+    for member in proto.memberBlock.members {
+        let decl = member.decl
+        if decl.is(InitializerDeclSyntax.self) { return .initializerUnsupported }
+        if decl.is(SubscriptDeclSyntax.self) { return .subscriptUnsupported }
+        if decl.is(AssociatedTypeDeclSyntax.self) { return .associatedTypeUnsupported }
+
+        if let function = decl.as(FunctionDeclSyntax.self), isStatic(function.modifiers) {
+            return .staticUnsupported
+        }
+        if let variable = decl.as(VariableDeclSyntax.self) {
+            if isStatic(variable.modifiers) { return .staticUnsupported }
+            // Effectful accessors (`{ get throws }`, `{ get async }`) aren't generated yet.
+            for binding in variable.bindings {
+                if case .accessors(let accessors)? = binding.accessorBlock?.accessors {
+                    if accessors.contains(where: { $0.effectSpecifiers != nil }) {
+                        return .effectfulAccessorUnsupported
+                    }
+                }
+            }
+        }
+    }
+    return nil
 }
 
 // MARK: - Member models
@@ -252,4 +302,12 @@ private struct MockDiagnostic: DiagnosticMessage {
     static func overloadUnsupported(_ name: String) -> MockDiagnostic {
         MockDiagnostic("'@Mock' does not yet support overloaded members ('\(name)' is declared more than once)", "overloadUnsupported")
     }
+    static func inheritanceUnsupported(_ name: String) -> MockDiagnostic {
+        MockDiagnostic("'@Mock' does not yet support inherited protocol requirements (from '\(name)'); flatten the requirements into the mocked protocol", "inheritanceUnsupported")
+    }
+    static let staticUnsupported = MockDiagnostic("'@Mock' does not yet support static requirements", "staticUnsupported")
+    static let initializerUnsupported = MockDiagnostic("'@Mock' does not yet support initializer requirements", "initializerUnsupported")
+    static let subscriptUnsupported = MockDiagnostic("'@Mock' does not yet support subscript requirements", "subscriptUnsupported")
+    static let associatedTypeUnsupported = MockDiagnostic("'@Mock' does not yet support associated types", "associatedTypeUnsupported")
+    static let effectfulAccessorUnsupported = MockDiagnostic("'@Mock' does not yet support throwing or async property accessors", "effectfulAccessorUnsupported")
 }

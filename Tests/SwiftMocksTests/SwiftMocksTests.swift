@@ -169,4 +169,80 @@ final class MockDiagnosticsTests: XCTestCase {
             macros: testMacros
         )
     }
+
+    func testInheritedRequirementsAreDiagnosed() {
+        assertMacroExpansion(
+            """
+            @Mock
+            protocol Derived: Base {
+                func foo()
+            }
+            """,
+            expandedSource: """
+            protocol Derived: Base {
+                func foo()
+            }
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "'@Mock' does not yet support inherited protocol requirements (from 'Base'); flatten the requirements into the mocked protocol", line: 1, column: 1)
+            ],
+            macros: testMacros
+        )
+    }
+
+    func testStaticRequirementIsDiagnosed() {
+        assertMacroExpansion(
+            """
+            @Mock
+            protocol Factory {
+                static func make()
+            }
+            """,
+            expandedSource: """
+            protocol Factory {
+                static func make()
+            }
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "'@Mock' does not yet support static requirements", line: 1, column: 1)
+            ],
+            macros: testMacros
+        )
+    }
+
+    func testSubscriptRequirementIsDiagnosed() {
+        assertMacroExpansion(
+            """
+            @Mock
+            protocol Container {
+                subscript(index: Int) -> String { get }
+            }
+            """,
+            expandedSource: """
+            protocol Container {
+                subscript(index: Int) -> String { get }
+            }
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "'@Mock' does not yet support subscript requirements", line: 1, column: 1)
+            ],
+            macros: testMacros
+        )
+    }
+
+}
+
+// A marker protocol carries no requirements, so `: Sendable` must NOT be diagnosed and the
+// mock should generate and work normally.
+@Mock
+protocol Worker: Sendable {
+    func work()
+}
+
+final class SendableInheritanceTests: XCTestCase {
+    func testMarkerInheritanceIsAllowed() {
+        let worker = WorkerMock()
+        worker.work()
+        XCTAssertTrue(worker.verify.work.calledOnce)
+    }
 }
