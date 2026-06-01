@@ -1,0 +1,21 @@
+# Conservative ruleset — focus on real problems, not stylistic noise.
+excluded:
+  - .build
+  - docs-build
+
+disabled_rules:
+  - identifier_name        # short names like `a`, `f`, `m0` are intentional
+  - type_name
+  - todo
+  - trailing_comma
+  - function_parameter_count
+  - function_body_length
+  - type_body_length
+  - file_length
+  - cyclomatic_complexity
+  - nesting
+
+line_length:
+  warning: 140
+  ignores_comments: true
+  ignores_urls: true

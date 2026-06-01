@@ -52,3 +52,11 @@ let package = Package(
         ),
     ]
 )
+
+// DocC is only needed when building documentation, so it's gated behind an environment
+// variable to keep it out of consumers' dependency graphs.
+if Context.environment["SWIFTMOCKS_BUILD_DOCS"] != nil {
+    package.dependencies.append(
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0")
+    )
+}

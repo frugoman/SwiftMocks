@@ -7,3 +7,4 @@ DerivedData
 *~
 .swiftpm/
 .build/
+docs-build/
