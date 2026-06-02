@@ -368,6 +368,26 @@ final class MockDiagnosticsTests: XCTestCase {
         )
     }
 
+    func testGenericMethodIsDiagnosed() {
+        assertMacroExpansion(
+            """
+            @Mock
+            protocol Transformer {
+                func transform<T>(_ value: T) -> T
+            }
+            """,
+            expandedSource: """
+            protocol Transformer {
+                func transform<T>(_ value: T) -> T
+            }
+            """,
+            diagnostics: [
+                DiagnosticSpec(message: "'@Mock' does not yet support generic methods (a method-scoped generic parameter can't be tracked); use a concrete or existential type", line: 1, column: 1)
+            ],
+            macros: testMacros
+        )
+    }
+
     func testSubscriptRequirementIsDiagnosed() {
         assertMacroExpansion(
             """

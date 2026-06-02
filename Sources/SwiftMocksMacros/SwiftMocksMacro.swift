@@ -112,6 +112,8 @@ private func unsupportedFeature(in proto: ProtocolDeclSyntax) -> MockDiagnostic?
 
         if let function = decl.as(FunctionDeclSyntax.self) {
             if isStatic(function.modifiers) { return .staticUnsupported }
+            // A method-scoped generic parameter can't appear in a type-scoped tracker.
+            if function.genericParameterClause != nil { return .genericUnsupported }
             for param in function.signature.parameterClause.parameters {
                 // These can't live in the tracker's argument tuple / stub closure.
                 if param.ellipsis != nil { return .variadicUnsupported }
@@ -149,6 +151,7 @@ private func unsupportedClassMember(in classDecl: ClassDeclSyntax) -> MockDiagno
             if has(f.modifiers, .final) { return .finalUnsupported }
             if has(f.modifiers, .static, .class) { return .staticUnsupported }
             if has(f.modifiers, .private, .fileprivate) { return .privateUnsupported }
+            if f.genericParameterClause != nil { return .genericUnsupported }
             for param in f.signature.parameterClause.parameters {
                 if param.ellipsis != nil { return .variadicUnsupported }
                 if param.type.trimmedDescription.hasPrefix("inout ") { return .inoutUnsupported }
@@ -450,4 +453,5 @@ private struct MockDiagnostic: DiagnosticMessage {
     static let effectfulAccessorUnsupported = MockDiagnostic("'@Mock' does not yet support throwing or async property accessors", "effectfulAccessorUnsupported")
     static let variadicUnsupported = MockDiagnostic("'@Mock' does not yet support variadic parameters", "variadicUnsupported")
     static let inoutUnsupported = MockDiagnostic("'@Mock' does not yet support 'inout' parameters", "inoutUnsupported")
+    static let genericUnsupported = MockDiagnostic("'@Mock' does not yet support generic methods (a method-scoped generic parameter can't be tracked); use a concrete or existential type", "genericUnsupported")
 }
