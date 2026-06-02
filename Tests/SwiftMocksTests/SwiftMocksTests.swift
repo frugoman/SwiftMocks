@@ -220,6 +220,7 @@ final class ReadmeSnippetTests: XCTestCase {
 
 // MARK: - Failure-reporter adapters
 
+#if canImport(Darwin)   // XCTExpectFailure is Apple-only; not in swift-corelibs-xctest
 final class XCTestAdapterTests: XCTestCase {
     func testRoutesFailureToXCTFail() {
         let original = SwiftMocks.failureReporter
@@ -230,6 +231,7 @@ final class XCTestAdapterTests: XCTestCase {
         SwiftMocks.failureReporter("boom", #filePath, #line)
     }
 }
+#endif
 
 @Test func swiftTestingAdapterRecordsIssue() {
     let original = SwiftMocks.failureReporter
