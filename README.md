@@ -228,6 +228,7 @@ roadmap:
 - `static` requirements, initializers, subscripts, and associated types
 - throwing / async property accessors
 - `inout` and variadic parameters
+- generic methods (a method-scoped generic can't be tracked at type scope)
 
 ## Failure reporting
 
